@@ -2,7 +2,7 @@ apiVersion: sourceplane.io/v1
 kind: Component
 metadata:
   name: web-tests
-  description: The app's tests (the webhook signature and route, Lemon Squeezy and GitHub before and after they are connected, who may open which page, the Auth.js key, the health check, the committed wrangler config)
+  description: The app's tests (the webhook signature, route and processing on a real migrated Postgres, Lemon Squeezy and GitHub before and after they are connected, who may open which page, the Auth.js key, the health check, the committed wrangler config)
 spec:
   type: turbo-package
   lifecycle: production
