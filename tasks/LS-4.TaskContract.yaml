@@ -1,0 +1,15 @@
+apiVersion: orun.io/v1
+kind: TaskContract
+metadata:
+  name: LS-4
+  title: "Ready to instantiate"
+spec:
+  goal: A reader can run, test, preview, deploy and connect the billing portal from the README, and the as-built status records every departure from the upstream template
+  affects:
+    - README.md
+    - apps/web/README.md
+    - specs/epics/lemonsqueezy-billing
+  doneWhen:
+    - the README covers local development, the tests, the build, the deploy, and connecting Lemon Squeezy and sign-in
+    - IMPLEMENTATION-STATUS lists every departure
+  gates: []

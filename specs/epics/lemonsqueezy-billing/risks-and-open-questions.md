@@ -1,0 +1,14 @@
+# Risks and open questions — lemonsqueezy-billing
+
+| # | Risk | Mitigation / decision |
+|---|---|---|
+| LS-A | A Postgres client kept across requests hangs on Workers ("Cannot perform I/O on behalf of a different request"). | `getDb()` opens one per call and Auth.js is configured per request; Hyperdrive is the pool. The auth key, a string, is the only thing cached per isolate. |
+| LS-B | With no GitHub OAuth app nobody can sign in, so a guarded dashboard would make the unconnected app unviewable. | The dashboard is a preview while sign-in is not connected (`src/lib/authorized.ts`): no user, no one's data; `setupWebhook` and every subscription action require a session. Once both GitHub secrets are stored the guard is upstream's. |
+| LS-C | Auth.js decides the cookies' `__Secure-` prefix per call from the URL it sees: a route handler from the request, the proxy and server components from `x-forwarded-proto`, defaulting to https. Over http (`wrangler dev`) they disagreed and sign-in looped. | `useSecureCookies` is decided once from `APP_URL` (`src/auth.ts`). A deployment is https either way; the e2e signs in over http with the deployment's cookie name. |
+| LS-D | Wedges 1.4.0 declares a React 18 peer; the port runs React 19.2. | A peer warning only: it builds, renders under `wrangler dev` and its Tailwind preset compiles. Revisit when Wedges publishes a React 19 range. |
+| LS-E | The Management API adapter sends each statement in autocommit mode, so a migration that fails partway leaves what it did. | Every migration is idempotent (`IF NOT EXISTS`, `DO … EXCEPTION WHEN duplicate_object`), so a re-run finishes it. |
+| LS-G | Local development needs a Postgres (Supabase CLI's 54322, or `POSTGRES_URL`). | Said in the product's README; the build and the tests need none. |
+| LS-J | No platform brokers Lemon Squeezy or GitHub OAuth apps. | Optional Orun secrets; the app deploys and says what to connect. |
+| LS-L | Supabase's Data API serves `public` to the anon key; `account` holds OAuth tokens and `session` live session tokens. | `030_row_level_security`: RLS, no policy, on every public table; the app owns them. The migration refuses to run if `postgres` would be locked out. |
+| LS-M | The applies, the migrations and the deploy on a real account are proven only by a live bootstrap; the eighteen minutes is an estimate. | The roots are held to `terraform validate`, the migrations run through the product's runner against a stand-in for the Management API, and the Worker is served by `wrangler dev` in Baseline CI. |
+| LS-N | No GitHub OAuth round trip and no Lemon Squeezy API call is made by any test. | The e2e stops at GitHub's authorize redirect and at a webhook signed with a fake secret; `tests/web` mocks the SDK (getPrice, setup) against a real migrated Postgres. A connected live product closes it. |

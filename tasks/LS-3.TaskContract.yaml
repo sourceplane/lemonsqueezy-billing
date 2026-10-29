@@ -1,0 +1,20 @@
+apiVersion: orun.io/v1
+kind: TaskContract
+metadata:
+  name: LS-3
+  title: "Supabase and Hyperdrive from Terraform, the schema through db-migrate"
+spec:
+  goal: A Supabase project and a Hyperdrive config per environment from Terraform, upstream's tables as db-migrate migrations with the generated Auth.js key and row-level security, applied before the Worker deploys
+  affects:
+    - infra/terraform/supabase
+    - infra/terraform/cloudflare-hyperdrive
+    - infra/db-migrate
+    - packages/db
+    - tests/db
+    - apps/web/component.yaml
+    - pnpm-lock.yaml
+  doneWhen:
+    - both roots pass terraform validate
+    - tests/db applies every migration to a real Postgres, matches the tables to the Drizzle schema and finds RLS on every public table
+    - the product's push-to-main plan orders supabase → cloudflare-hyperdrive → db-migrate → web per environment
+  gates: []
