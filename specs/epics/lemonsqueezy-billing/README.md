@@ -15,7 +15,7 @@ deploy contract.
 
 | Field | Value |
 |-------|-------|
-| Status | In progress — LS0 (this doc set) |
+| Status | ✅ Shipped (`baseline-v1`) — LS0 to LS4; proven offline in Baseline CI; not yet live (risks LS-M, LS-N) |
 | Cluster | **LS** (LS0–LS4) |
 | Owner(s) | `apps/web` · `tests/web` · `infra/terraform/{supabase,cloudflare-hyperdrive}` · `packages/db` + `infra/db-migrate` · `tests/db` |
 | Forked from | `subscription-payments` (the billing row: optional payment provider, sample plans, the not-connected webhook); its data path from `saas-starter` (Hyperdrive, a Drizzle client per call, the generated app secret, the e2e's Hyperdrive lane), because this template queries Postgres through Drizzle |
