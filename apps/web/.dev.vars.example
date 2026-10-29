@@ -1,0 +1,20 @@
+# Local secrets for `pnpm preview` / `wrangler dev` (copy to .dev.vars, which
+# git ignores). Every one is optional: without them the app says what to
+# connect, shows sample plans and opens the dashboard as a preview.
+#
+# Lemon Squeezy (Settings → API; Settings → Stores; any string for the secret)
+# LEMONSQUEEZY_API_KEY=
+# LEMONSQUEEZY_STORE_ID=
+# LEMONSQUEEZY_WEBHOOK_SECRET=
+#
+# A GitHub OAuth app whose callback URL is <origin>/api/auth/callback/github
+# AUTH_GITHUB_ID=
+# AUTH_GITHUB_SECRET=
+#
+# Where Lemon Squeezy delivers webhooks, if not this app's APP_URL — e.g. a
+# tunnel to `pnpm dev` (upstream's WEBHOOK_URL).
+# WEBHOOK_URL=
+#
+# Auth.js's signing key. Leave unset to use the one the migrations generated
+# in the database (app_private.secrets).
+# AUTH_SECRET=

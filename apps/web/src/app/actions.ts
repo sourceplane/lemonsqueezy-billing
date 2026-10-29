@@ -1,0 +1,493 @@
+/* eslint-disable no-console -- allow logs */
+/* eslint-disable @typescript-eslint/no-non-null-assertion -- checked in configureLemonSqueezy() */
+"use server";
+
+import {
+  cancelSubscription,
+  createCheckout,
+  createWebhook,
+  getProduct,
+  getSubscription,
+  listPrices,
+  listProducts,
+  listWebhooks,
+  updateSubscription,
+  type Variant,
+} from "@lemonsqueezy/lemonsqueezy.js";
+import { and, eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+import { notFound } from "next/navigation";
+import {
+  getDb,
+  plans,
+  subscriptions,
+  type NewPlan,
+  type NewSubscription,
+} from "@/db";
+import { configureLemonSqueezy } from "@/config/lemonsqueezy";
+import { appUrl, isGitHubConnected, webhookUrl } from "@/lib/connections";
+import { SITE_NAME } from "@/lib/site";
+import { takeUniqueOrThrow } from "@/lib/utils";
+import { auth, signOut } from "../auth";
+
+// Upstream's server actions. Ported: each opens its own database client
+// (getDb(), over the HYPERDRIVE binding) instead of sharing a module-level
+// one; the webhook URL and the checkout's return URL come from
+// src/lib/connections.ts; and the reads that pages call while rendering
+// (hasWebhook, syncPlans, getUserSubscriptions, getSubscriptionURLs) no
+// longer call revalidatePath, which Next.js 15+ refuses during a render.
+// The pages are dynamic, so nothing they read is cached to begin with.
+
+/**
+ * This action will log out the current user.
+ */
+export async function logout() {
+  await signOut();
+}
+
+/**
+ * This action will create a checkout on Lemon Squeezy.
+ */
+export async function getCheckoutURL(variantId: number, embed = false) {
+  configureLemonSqueezy();
+
+  const session = await auth();
+
+  if (!session?.user) {
+    throw new Error("User is not authenticated.");
+  }
+
+  const checkout = await createCheckout(
+    process.env.LEMONSQUEEZY_STORE_ID!,
+    variantId,
+    {
+      checkoutOptions: {
+        embed,
+        media: false,
+        logo: !embed,
+      },
+      checkoutData: {
+        email: session.user.email ?? undefined,
+        custom: {
+          user_id: session.user.id,
+        },
+      },
+      productOptions: {
+        enabledVariants: [variantId],
+        redirectUrl: `${appUrl()}/dashboard/billing/`,
+        receiptButtonText: "Go to Dashboard",
+        receiptThankYouNote: `Thank you for signing up to ${SITE_NAME}!`,
+      },
+    },
+  );
+
+  return checkout.data?.data.attributes.url;
+}
+
+/**
+ * This action will check if a webhook exists on Lemon Squeezy. It will return
+ * the webhook if it exists, otherwise it will return undefined.
+ */
+export async function hasWebhook() {
+  configureLemonSqueezy();
+
+  // Check if a webhook exists on Lemon Squeezy.
+  const allWebhooks = await listWebhooks({
+    filter: { storeId: process.env.LEMONSQUEEZY_STORE_ID },
+  });
+
+  // This deployment's /api/webhook (WEBHOOK_URL when set, else APP_URL).
+  const url = webhookUrl();
+
+  const webhook = allWebhooks.data?.data.find(
+    (wh) => wh.attributes.url === url && wh.attributes.test_mode,
+  );
+
+  return webhook;
+}
+
+/**
+ * This action will set up a webhook on Lemon Squeezy to listen to
+ * Subscription events. It will only set up the webhook if it does not exist.
+ */
+export async function setupWebhook() {
+  configureLemonSqueezy();
+
+  // The dashboard is open to visitors while sign-in is not connected (the
+  // preview, src/auth.ts); changing the store's webhooks is not.
+  const session = await auth();
+  if (!session?.user) {
+    throw new Error("User is not authenticated.");
+  }
+
+  const url = webhookUrl();
+
+  // Do not set a webhook on Lemon Squeezy if it already exists.
+  let webhook = await hasWebhook();
+
+  // If the webhook does not exist, create it.
+  if (!webhook) {
+    const newWebhook = await createWebhook(process.env.LEMONSQUEEZY_STORE_ID!, {
+      secret: process.env.LEMONSQUEEZY_WEBHOOK_SECRET!,
+      url,
+      testMode: true, // will create a webhook in Test mode only!
+      events: [
+        "subscription_created",
+        "subscription_expired",
+        "subscription_updated",
+      ],
+    });
+
+    webhook = newWebhook.data?.data;
+  }
+
+  revalidatePath("/");
+}
+
+/**
+ * This action will sync the product variants from Lemon Squeezy with the
+ * Plans database model. It will only sync the 'subscription' variants.
+ */
+export async function syncPlans() {
+  configureLemonSqueezy();
+  const db = await getDb();
+
+  // Fetch all the variants from the database.
+  const productVariants: NewPlan[] = await db.select().from(plans);
+
+  // Helper function to add a variant to the productVariants array and sync it with the database.
+  async function _addVariant(variant: NewPlan) {
+    // Sync the variant with the plan in the database.
+    await db
+      .insert(plans)
+      .values(variant)
+      .onConflictDoUpdate({ target: plans.variantId, set: variant });
+
+    productVariants.push(variant);
+  }
+
+  // Fetch products from the Lemon Squeezy store.
+  const products = await listProducts({
+    filter: { storeId: process.env.LEMONSQUEEZY_STORE_ID },
+    include: ["variants"],
+  });
+
+  // Loop through all the variants.
+  const allVariants = products.data?.included as Variant["data"][] | undefined;
+
+  // for...of supports asynchronous operations, unlike forEach.
+  if (allVariants) {
+    for (const v of allVariants) {
+      const variant = v.attributes;
+
+      // Skip draft variants or if there's more than one variant, skip the default
+      // variant. See https://docs.lemonsqueezy.com/api/variants
+      if (
+        variant.status === "draft" ||
+        (allVariants.length !== 1 && variant.status === "pending")
+      ) {
+        // `return` exits the function entirely, not just the current iteration.
+        continue;
+      }
+
+      // Fetch the Product name.
+      const productName =
+        (await getProduct(variant.product_id)).data?.data.attributes.name ?? "";
+
+      // Fetch the Price object.
+      const variantPriceObject = await listPrices({
+        filter: {
+          variantId: v.id,
+        },
+      });
+
+      const currentPriceObj = variantPriceObject.data?.data.at(0);
+      const isUsageBased =
+        currentPriceObj?.attributes.usage_aggregation !== null;
+      const interval = currentPriceObj?.attributes.renewal_interval_unit;
+      const intervalCount =
+        currentPriceObj?.attributes.renewal_interval_quantity;
+      const trialInterval = currentPriceObj?.attributes.trial_interval_unit;
+      const trialIntervalCount =
+        currentPriceObj?.attributes.trial_interval_quantity;
+
+      const price = isUsageBased
+        ? currentPriceObj?.attributes.unit_price_decimal
+        : currentPriceObj.attributes.unit_price;
+
+      const priceString = price !== null ? (price?.toString() ?? "") : "";
+
+      const isSubscription =
+        currentPriceObj?.attributes.category === "subscription";
+
+      // If not a subscription, skip it.
+      if (!isSubscription) {
+        continue;
+      }
+
+      await _addVariant({
+        name: variant.name,
+        description: variant.description,
+        price: priceString,
+        interval,
+        intervalCount,
+        isUsageBased,
+        productId: variant.product_id,
+        productName,
+        variantId: parseInt(v.id) as unknown as number,
+        trialInterval,
+        trialIntervalCount,
+        sort: variant.sort,
+      });
+    }
+  }
+
+  return productVariants;
+}
+
+
+/**
+ * This action will get the subscriptions for the current user.
+ */
+export async function getUserSubscriptions() {
+  const session = await auth();
+  const userId = session?.user?.id;
+
+  if (!userId) {
+    // The preview (no sign-in connected yet) has no user and so none.
+    if (!isGitHubConnected()) {
+      return [];
+    }
+    notFound();
+  }
+
+  const db = await getDb();
+  const userSubscriptions: NewSubscription[] = await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.userId, userId));
+
+  return userSubscriptions;
+}
+
+/**
+ * This action will get the subscription URLs (update_payment_method and
+ * customer_portal) for the given subscription ID.
+ *
+ */
+export async function getSubscriptionURLs(id: string) {
+  configureLemonSqueezy();
+
+  const session = await auth();
+
+  if (!session?.user?.id) {
+    throw new Error("User is not authenticated.");
+  }
+
+  const db = await getDb();
+  const userSub = await db
+    .select()
+    .from(subscriptions)
+    .where(
+      and(
+        eq(subscriptions.lemonSqueezyId, id),
+        eq(subscriptions.userId, session.user.id),
+      ),
+    );
+
+  if (userSub.length < 1) {
+    throw new Error("Subscription not found.");
+  }
+
+  const subscription = await getSubscription(id);
+
+  if (subscription.error) {
+    throw new Error(subscription.error.message);
+  }
+
+  return subscription.data.data.attributes.urls;
+}
+
+/**
+ * This action will cancel a subscription on Lemon Squeezy.
+ */
+export async function cancelSub(id: string) {
+  configureLemonSqueezy();
+
+  // Get user subscriptions
+  const userSubscriptions = await getUserSubscriptions();
+
+  // Check if the subscription exists
+  const subscription = userSubscriptions.find(
+    (sub) => sub.lemonSqueezyId === id,
+  );
+
+  if (!subscription) {
+    throw new Error(`Subscription #${id} not found.`);
+  }
+
+  const cancelledSub = await cancelSubscription(id);
+
+  if (cancelledSub.error) {
+    throw new Error(cancelledSub.error.message);
+  }
+
+  // Update the db
+  const db = await getDb();
+  try {
+    await db
+      .update(subscriptions)
+      .set({
+        status: cancelledSub.data.data.attributes.status,
+        statusFormatted: cancelledSub.data.data.attributes.status_formatted,
+        endsAt: cancelledSub.data.data.attributes.ends_at,
+      })
+      .where(eq(subscriptions.lemonSqueezyId, id));
+  } catch (error) {
+    throw new Error(`Failed to cancel Subscription #${id} in the database.`);
+  }
+
+  revalidatePath("/");
+
+  return cancelledSub;
+}
+
+/**
+ * This action will pause a subscription on Lemon Squeezy.
+ */
+export async function pauseUserSubscription(id: string) {
+  configureLemonSqueezy();
+
+  // Get user subscriptions
+  const userSubscriptions = await getUserSubscriptions();
+
+  // Check if the subscription exists
+  const subscription = userSubscriptions.find(
+    (sub) => sub.lemonSqueezyId === id,
+  );
+
+  if (!subscription) {
+    throw new Error(`Subscription #${id} not found.`);
+  }
+
+  const returnedSub = await updateSubscription(id, {
+    pause: {
+      mode: "void",
+    },
+  });
+
+  // Update the db
+  const db = await getDb();
+  try {
+    await db
+      .update(subscriptions)
+      .set({
+        status: returnedSub.data?.data.attributes.status,
+        statusFormatted: returnedSub.data?.data.attributes.status_formatted,
+        endsAt: returnedSub.data?.data.attributes.ends_at,
+        isPaused: returnedSub.data?.data.attributes.pause !== null,
+      })
+      .where(eq(subscriptions.lemonSqueezyId, id));
+  } catch (error) {
+    throw new Error(`Failed to pause Subscription #${id} in the database.`);
+  }
+
+  revalidatePath("/");
+
+  return returnedSub;
+}
+
+/**
+ * This action will unpause a subscription on Lemon Squeezy.
+ */
+export async function unpauseUserSubscription(id: string) {
+  configureLemonSqueezy();
+
+  // Get user subscriptions
+  const userSubscriptions = await getUserSubscriptions();
+
+  // Check if the subscription exists
+  const subscription = userSubscriptions.find(
+    (sub) => sub.lemonSqueezyId === id,
+  );
+
+  if (!subscription) {
+    throw new Error(`Subscription #${id} not found.`);
+  }
+
+  const returnedSub = await updateSubscription(id, { pause: null });
+
+  // Update the db
+  const db = await getDb();
+  try {
+    await db
+      .update(subscriptions)
+      .set({
+        status: returnedSub.data?.data.attributes.status,
+        statusFormatted: returnedSub.data?.data.attributes.status_formatted,
+        endsAt: returnedSub.data?.data.attributes.ends_at,
+        isPaused: returnedSub.data?.data.attributes.pause !== null,
+      })
+      .where(eq(subscriptions.lemonSqueezyId, id));
+  } catch (error) {
+    throw new Error(`Failed to pause Subscription #${id} in the database.`);
+  }
+
+  revalidatePath("/");
+
+  return returnedSub;
+}
+
+/**
+ * This action will change the plan of a subscription on Lemon Squeezy.
+ */
+export async function changePlan(currentPlanId: number, newPlanId: number) {
+  configureLemonSqueezy();
+
+  // Get user subscriptions
+  const userSubscriptions = await getUserSubscriptions();
+
+  // Check if the subscription exists
+  const subscription = userSubscriptions.find(
+    (sub) => sub.planId === currentPlanId,
+  );
+
+  if (!subscription) {
+    throw new Error(
+      `No subscription with plan id #${currentPlanId} was found.`,
+    );
+  }
+
+  // Get the new plan details from the database.
+  const db = await getDb();
+  const newPlan = await db
+    .select()
+    .from(plans)
+    .where(eq(plans.id, newPlanId))
+    .then(takeUniqueOrThrow);
+
+  // Send request to Lemon Squeezy to change the subscription.
+  const updatedSub = await updateSubscription(subscription.lemonSqueezyId, {
+    variantId: newPlan.variantId,
+  });
+
+  // Save in db
+  try {
+    await db
+      .update(subscriptions)
+      .set({
+        planId: newPlanId,
+        price: newPlan.price,
+        endsAt: updatedSub.data?.data.attributes.ends_at,
+      })
+      .where(eq(subscriptions.lemonSqueezyId, subscription.lemonSqueezyId));
+  } catch (error) {
+    throw new Error(
+      `Failed to update Subscription #${subscription.lemonSqueezyId} in the database.`,
+    );
+  }
+
+  revalidatePath("/");
+
+  return updatedSub;
+}

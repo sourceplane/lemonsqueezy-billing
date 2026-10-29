@@ -1,0 +1,132 @@
+apiVersion: sourceplane.io/v1
+kind: Component
+metadata:
+  name: web
+  description: Lemon Squeezy's Next.js billing portal — Auth.js with GitHub sign-in, plans and subscriptions over Lemon Squeezy, Drizzle on Postgres (Next.js on Cloudflare Workers + Static Assets via @opennextjs/cloudflare, per environment)
+spec:
+  type: cloudflare-workers-assets-turbo
+  lifecycle: production
+  owner: platform
+  # Its pages, attached to it in the workspace's catalog: what the Docs
+  # library shows for it, and what the catalog's docs and runbook checks read.
+  # Generated from what this manifest and its sources declare.
+  docs:
+    overview: docs/overview.md
+    pages:
+      - { path: docs/architecture.md, role: architecture, title: Architecture }
+      - { path: docs/runbook.md, role: runbook, title: Runbook }
+  # `app`, not `web`: a domain and a component share one name space in the
+  # catalog, and a domain called `web` hid this component from it.
+  domain: app
+  path: apps/web
+  # Its own lane per environment: the Next.js build is the longest job in the
+  # plan, and a shared lane would wait on it.
+  lane: isolated
+  # INFRA BEFORE APP, ENFORCED ON MAIN. A merge to main converges the whole
+  # product in one run: the Supabase project, then the Hyperdrive config over
+  # its database, then the migrations, then this Worker. Its deploy reads the
+  # Hyperdrive id (WIRING_CLOUDFLARE_HYPERDRIVE_<ENV>, rendered into the
+  # HYPERDRIVE binding) and needs the schema applied, and a job resolves its
+  # secrets when it STARTS — so it waits on both, `mode: enforced`, and the
+  # ids the applies lease-published are there. A pull request deploys
+  # nothing, so nothing on one waits: every edge is advisory there.
+  dependsOn:
+    - component: cloudflare-hyperdrive
+      mode: enforced
+      modeRules:
+        - mode: advisory
+          when:
+            triggerRef: github-pull-request
+    - component: db-migrate
+      mode: enforced
+      modeRules:
+        - mode: advisory
+          when:
+            triggerRef: github-pull-request
+  # The wiring documents the cloudflare-hyperdrive root lease-publishes, one
+  # per deployed environment; tooling/wire/live.mjs picks this job's.
+  secretEnv:
+    WIRING_CLOUDFLARE_HYPERDRIVE_STAGE: "secret://lemonsqueezy-billing/lemonsqueezy-billing/stage/WIRING_CLOUDFLARE_HYPERDRIVE"
+    WIRING_CLOUDFLARE_HYPERDRIVE_PROD: "secret://lemonsqueezy-billing/lemonsqueezy-billing/prod/WIRING_CLOUDFLARE_HYPERDRIVE"
+  # Lemon Squeezy's API key, store id and webhook secret, and the GitHub OAuth
+  # app Auth.js signs in with, stored per environment as the product's
+  # secrets (README → Connect Lemon Squeezy, Connect sign-in). BEST-EFFORT,
+  # wire-now-seed-later: a key nobody has stored is skipped when the job
+  # resolves its secrets (no env var, no failure), and the app without them
+  # deploys and says what to connect — sample plans on the billing page, the
+  # dashboard open as a preview until sign-in is connected. An AUTH_SECRET,
+  # if stored, replaces the key the migrations generate in the database.
+  optionalSecretEnv:
+    LEMONSQUEEZY_API_KEY: "secret://lemonsqueezy-billing/lemonsqueezy-billing/{{ .environment }}/LEMONSQUEEZY_API_KEY"
+    LEMONSQUEEZY_STORE_ID: "secret://lemonsqueezy-billing/lemonsqueezy-billing/{{ .environment }}/LEMONSQUEEZY_STORE_ID"
+    LEMONSQUEEZY_WEBHOOK_SECRET: "secret://lemonsqueezy-billing/lemonsqueezy-billing/{{ .environment }}/LEMONSQUEEZY_WEBHOOK_SECRET"
+    AUTH_GITHUB_ID: "secret://lemonsqueezy-billing/lemonsqueezy-billing/{{ .environment }}/AUTH_GITHUB_ID"
+    AUTH_GITHUB_SECRET: "secret://lemonsqueezy-billing/lemonsqueezy-billing/{{ .environment }}/AUTH_GITHUB_SECRET"
+    AUTH_SECRET: "secret://lemonsqueezy-billing/lemonsqueezy-billing/{{ .environment }}/AUTH_SECRET"
+  subscribe:
+    environments:
+      - name: dev
+        profile: verify
+      - name: stage
+        profile: verify
+        profileRules:
+          - profile: deploy
+            when:
+              triggerRef: github-push-main
+      - name: prod
+        profile: verify
+        profileRules:
+          - profile: deploy
+            when:
+              triggerRef: github-push-main
+  parameters:
+    nodeVersion: "22"
+    pnpmVersion: "10.12.1"
+
+    workspaceDir: ../..
+    appDir: .
+
+    turboFilter: "@app/web"
+    wranglerConfig: wrangler.jsonc
+
+    # @opennextjs/cloudflare emits a Worker entrypoint plus a static-assets
+    # directory bound via ASSETS — both deploy in one `wrangler deploy`.
+    workerEntrypoint: .open-next/worker.js
+    assetsDir: .open-next/assets
+
+    # Per-env worker name: lemonsqueezy-billing-web-{dev,stage,prod}.
+    workerName: lemonsqueezy-billing-web
+    environmentAwareWorkerName: true
+
+    # The account's workers.dev subdomain; exported to the smoke step as
+    # ${WORKERS_DEV_SUBDOMAIN} and used to build ${DEPLOYED_URL}.
+    workersDevSubdomain: your-workers-subdomain
+
+    installCommand: pnpm install --frozen-lockfile
+    # Render this environment's wrangler config, then build. stage and prod
+    # render from the wiring document their cloudflare-hyperdrive apply
+    # published (secretEnv above, resolved before the job's first step); dev,
+    # which no root applies to and which only verifies, renders from the
+    # committed fixture. The committed wrangler.jsonc (the fixture render) is
+    # what the composition's verify-app-structure step finds before this runs.
+    # The optional secrets never reach the build (`env -u`): the Worker reads
+    # them at request time, so neither a bundle nor the bundler's cache holds
+    # them. Then each one the environment has goes to the Worker as a SECRET
+    # (tooling/wire/worker-secrets.mjs: `wrangler secret bulk`, the values
+    # over stdin) before the composition deploys it. Only the deploy lane
+    # holds a Cloudflare credential, so a verify lane builds the same and
+    # pushes nothing.
+    buildCommand: node ../../tooling/wire/live.mjs --template wrangler.template.jsonc --out wrangler.jsonc --components cloudflare-hyperdrive --env "${ORUN_ENVIRONMENT}" --fixture wiring.fixture.json --fixture-envs dev && env -u LEMONSQUEEZY_API_KEY -u LEMONSQUEEZY_STORE_ID -u LEMONSQUEEZY_WEBHOOK_SECRET -u AUTH_GITHUB_ID -u AUTH_GITHUB_SECRET -u AUTH_SECRET pnpm exec turbo run build --filter=@app/web && node ../../tooling/wire/worker-secrets.mjs --secret LEMONSQUEEZY_API_KEY --secret LEMONSQUEEZY_STORE_ID --secret LEMONSQUEEZY_WEBHOOK_SECRET --secret AUTH_GITHUB_ID --secret AUTH_GITHUB_SECRET --secret AUTH_SECRET --worker "lemonsqueezy-billing-web-${ORUN_ENVIRONMENT}" --config wrangler.jsonc
+
+    # Smoke: the sign-in page renders to its end (`</html>` — a render that
+    # throws partway through a streamed page still sent a 200), and
+    # /api/health answers ok — which only the Worker can, by reading the
+    # Supabase database through its HYPERDRIVE binding (upstream's tables and
+    # the generated auth key, so the migrations applied). Read-only. Each
+    # response is buffered before grep so an early match cannot SIGPIPE curl.
+    smokeCommand: "html=$(curl -sfL \"${DEPLOYED_URL}/\") && echo \"${html}\" | grep -q '</html>' && health=$(curl -sf \"${DEPLOYED_URL}/api/health\") && echo \"${health}\" | grep -q '\"ok\":true'"
+  labels:
+    team: platform
+    layer: delivery
+    surface: web
+    runtime: cloudflare
