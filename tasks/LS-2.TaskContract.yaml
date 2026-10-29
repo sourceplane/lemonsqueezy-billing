@@ -1,0 +1,17 @@
+apiVersion: orun.io/v1
+kind: TaskContract
+metadata:
+  name: LS-2
+  title: "The billing portal on Workers"
+spec:
+  goal: apps/web is Lemon Squeezy's Next.js Billing App on Next.js 16, built by OpenNext into one Worker with Static Assets, its Drizzle client per call over the HYPERDRIVE binding, Auth.js per request, the webhook signature in WebCrypto, and an unconnected mode that says what to connect
+  affects:
+    - apps/web
+    - tests/web
+    - pnpm-lock.yaml
+    - pnpm-workspace.yaml
+    - package.json
+  doneWhen:
+    - pnpm typecheck, lint, test and build are green
+    - under wrangler dev, with no secret, every page renders and says what to connect; with fake keys, the dashboard is guarded, sign-in goes to GitHub's authorize page and a database session opens the dashboard
+  gates: []

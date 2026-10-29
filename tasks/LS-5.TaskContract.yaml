@@ -1,0 +1,31 @@
+apiVersion: orun.io/v1
+kind: TaskContract
+metadata:
+  name: LS-5
+  title: "lemonsqueezy-billing becomes an Orun baseline"
+spec:
+  goal: lemonsqueezy-billing is an Orun baseline — a console card and a build document that take a new billing portal from nothing to live on stage and prod in one landing, renamed throughout, with Baseline CI proving it offline
+  affects:
+    - blueprint.yaml
+    - repo-blueprint.yaml
+    - BOOTSTRAP.md
+    - .baseline
+    - .github/workflows
+    - ai/context
+    - docs/phases
+    - hooks
+    - testing
+    - tooling
+    - apps
+    - infra
+    - packages
+    - tests
+    - intent.yaml
+    - README.md
+    - specs/epics/lemonsqueezy-billing
+    - specs/epics/README.md
+    - tasks
+  doneWhen:
+    - Baseline CI is green on the pull request — contract, blueprint (leak and placement) and product (e2e)
+    - a baseline-vN tag is cut by tag.yml
+  gates: []

@@ -1,0 +1,24 @@
+apiVersion: orun.io/v1
+kind: TaskContract
+metadata:
+  name: LS-1
+  title: "The spec"
+spec:
+  goal: The repository's intent, CI, shared tooling and spec index, and the lemonsqueezy-billing epic's doc set and task contracts, are on main — what the template is, how each piece maps to Cloudflare and Supabase, the milestones, the risks
+  affects:
+    - intent.yaml
+    - .github/workflows/ci.yml
+    - package.json
+    - pnpm-workspace.yaml
+    - turbo.json
+    - .gitignore
+    - .vscode
+    - tooling
+    - specs
+    - tasks
+    - README.md
+  doneWhen:
+    - epic.yaml, README, design, implementation plan, risks and status are on main
+    - the five task contracts are on main
+    - CI's plan job is green (it plans nothing while intent.yaml names ws_CHANGE_ME)
+  gates: []

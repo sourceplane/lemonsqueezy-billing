@@ -1,0 +1,41 @@
+# The epic's declaration. metadata.name equals the directory name; metadata.key
+# is the task-key prefix this epic reserves (LS → LS-1, LS-2, …). Owner, target
+# date and health are the platform's — never written here.
+apiVersion: orun.io/v1
+kind: Epic
+metadata:
+  name: lemonsqueezy-billing
+  key: LS
+spec:
+  title: "Lemon Squeezy's Next.js Billing App on Cloudflare Workers with Supabase Postgres through Hyperdrive"
+  summary: "Lemon Squeezy's Next.js Billing App (lmsqueezy/nextjs-billing) — GitHub sign-in through Auth.js v5 with database sessions, plans synced from a Lemon Squeezy store, checkout in Lemon.js's overlay, subscriptions kept current by signed webhooks and paused, resumed, cancelled or changed from the dashboard, Drizzle over Postgres — runs on Cloudflare Workers + Static Assets through @opennextjs/cloudflare. Its Postgres is a Supabase project's database reached through Cloudflare Hyperdrive, both provisioned by Terraform through Orun, its schema is applied by db-migrate, Lemon Squeezy's keys and the GitHub OAuth app are optional Orun secrets the app says how to connect, and it becomes an Orun baseline that takes a new billing portal from nothing to live on stage and prod in one landing."
+  state: started
+  milestones:
+    - name: "LS0 — the spec"
+      exitCriteria:
+        - "the repository carries its intent, CI, tooling and spec index, and this doc set and the task contracts are on main"
+      tasks: [LS-1]
+    - name: "LS1 — the billing portal on Workers"
+      exitCriteria:
+        - "apps/web is the upstream template on Next.js 16, built by OpenNext into one Worker with Static Assets, its Drizzle client per call over the HYPERDRIVE binding and Auth.js configured per request"
+        - "with no Lemon Squeezy key and no GitHub OAuth app the app builds, serves and says what to connect: sample plans, the dashboard as a preview, the webhook a 503"
+        - "the webhook's signature is checked with WebCrypto; Lemon Squeezy's keys, the GitHub OAuth app and AUTH_SECRET are optional Orun secrets the deploy pushes to the Worker"
+        - "`pnpm typecheck`, `pnpm lint`, `pnpm test` and `pnpm build` are green, and the README says how the template maps to this setup"
+      tasks: [LS-2]
+    - name: "LS2 — Supabase and Hyperdrive from Terraform, the schema through db-migrate"
+      exitCriteria:
+        - "infra/terraform/supabase provisions the project per environment and publishes its credentials; infra/terraform/cloudflare-hyperdrive fronts that database and publishes the wiring document the Worker's config renders from"
+        - "packages/db carries upstream's Drizzle tables as migrations, the generated Auth.js key and row-level security on every table in public; infra/db-migrate applies them before the Worker deploys"
+        - "tests/db holds the migrated tables to the app's Drizzle schema, column for column, and every public table to RLS"
+      tasks: [LS-3]
+    - name: "LS3 — ready to instantiate"
+      exitCriteria:
+        - "the README says how to run, test, preview and deploy it, and how to connect Lemon Squeezy and sign-in"
+        - "the as-built status records every departure from the upstream template"
+      tasks: [LS-4]
+    - name: "LS4 — lemonsqueezy-billing becomes an Orun baseline"
+      exitCriteria:
+        - "blueprint.yaml (the console card, requires [github, cloudflare, supabase]) and repo-blueprint.yaml (the build) take a new billing portal from nothing to live on stage and prod in one landing, then record it"
+        - "a product built from it carries the product only, renamed throughout, with the template's MIT licence intact"
+        - "Baseline CI is green: contract tests, generated component docs, the blueprint read by the pinned orun, the leak gate, the offline bootstrap and the end-to-end tier"
+      tasks: [LS-5]
