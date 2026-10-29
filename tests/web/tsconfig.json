@@ -1,0 +1,21 @@
+{
+  "extends": "../../tooling/tsconfig/web.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": ["node"],
+    // The suites import the app's own modules (the webhook route and its
+    // processing, the auth key, the connection checks), which are written to apps/web/tsconfig.json's rules, not the
+    // stricter worker base — match the app for what is pulled in.
+    "noUncheckedIndexedAccess": false,
+    "noImplicitReturns": false,
+    "noFallthroughCasesInSwitch": false,
+    "paths": {
+      "@/*": ["../../apps/web/src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

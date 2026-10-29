@@ -1,0 +1,43 @@
+// GENERATED from wrangler.template.jsonc by tooling/wire — edit the
+// template, not this file. The committed copy is the fixture render
+// (`pnpm run wire:fixture`); every Orun lane renders its own environment.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lemonsqueezy-billing-web",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": { "enabled": true },
+  // The Supabase project's Postgres, fronted by Hyperdrive, in place of
+  // upstream's Neon (POSTGRES_URL over @neondatabase/serverless). src/db/index.ts
+  // opens a client on env.HYPERDRIVE.connectionString per request. Locally —
+  // `wrangler dev`, `next dev` — the binding points at a local Postgres (the
+  // Supabase CLI's default database, `supabase start`, is on 54322).
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "00000000000000000000000000000001",
+      "localConnectionString": "postgres://postgres:postgres@localhost:54322/postgres"
+    }
+  ],
+  // The app's own origin, in place of upstream's NEXT_PUBLIC_APP_URL and
+  // WEBHOOK_URL: Lemon Squeezy's checkout sends the browser back to
+  // `${APP_URL}/dashboard/billing/`, and the webhook the dashboard registers
+  // is `${APP_URL}/api/webhook`. Auth.js builds its GitHub callback from the
+  // request (trustHost). The workers.dev subdomain is the one component.yaml
+  // and intent.yaml carry; serving a custom domain, change it here.
+  "vars": {
+    "APP_URL": "https://lemonsqueezy-billing-web-stage.your-workers-subdomain.workers.dev"
+  }
+  // Secrets are never vars. LEMONSQUEEZY_API_KEY, LEMONSQUEEZY_STORE_ID,
+  // LEMONSQUEEZY_WEBHOOK_SECRET, AUTH_GITHUB_ID and AUTH_GITHUB_SECRET are
+  // optional Orun secrets the deploy pushes to the Worker as Worker secrets
+  // (component.yaml's buildCommand, tooling/wire/worker-secrets.mjs); until
+  // they are stored the app says what is not connected. AUTH_SECRET is
+  // optional too: Auth.js signs with the key the database generated
+  // (src/lib/auth-secret.ts). Locally, all of them go in .dev.vars.
+}
