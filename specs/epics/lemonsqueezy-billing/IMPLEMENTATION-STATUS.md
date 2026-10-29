@@ -5,11 +5,8 @@
 | LS0 — the spec | ✅ Shipped | [#1](https://github.com/sourceplane/lemonsqueezy-billing/pull/1) |
 | LS1 — the billing portal on Workers | ✅ Shipped | [#2](https://github.com/sourceplane/lemonsqueezy-billing/pull/2) |
 | LS2 — Supabase and Hyperdrive from Terraform, the schema through db-migrate | ✅ Shipped | [#3](https://github.com/sourceplane/lemonsqueezy-billing/pull/3) |
-| LS3 — ready to instantiate | In progress | this pull request |
-| LS4 — an Orun baseline | Planned — the card, the build document, the rename and bootstrap tooling, `testing/` and Baseline CI | |
-
-The rows below that name `testing/` describe what LS4's Baseline CI proves;
-until it lands, the same flows were run by hand against this tree.
+| LS3 — ready to instantiate | ✅ Shipped | [#4](https://github.com/sourceplane/lemonsqueezy-billing/pull/4) |
+| LS4 — an Orun baseline | ✅ Shipped, tagged `baseline-v1` | [#5](https://github.com/sourceplane/lemonsqueezy-billing/pull/5) |
 
 ## Lineage
 

@@ -9,7 +9,7 @@ metadata:
 spec:
   title: "Lemon Squeezy's Next.js Billing App on Cloudflare Workers with Supabase Postgres through Hyperdrive"
   summary: "Lemon Squeezy's Next.js Billing App (lmsqueezy/nextjs-billing) — GitHub sign-in through Auth.js v5 with database sessions, plans synced from a Lemon Squeezy store, checkout in Lemon.js's overlay, subscriptions kept current by signed webhooks and paused, resumed, cancelled or changed from the dashboard, Drizzle over Postgres — runs on Cloudflare Workers + Static Assets through @opennextjs/cloudflare. Its Postgres is a Supabase project's database reached through Cloudflare Hyperdrive, both provisioned by Terraform through Orun, its schema is applied by db-migrate, Lemon Squeezy's keys and the GitHub OAuth app are optional Orun secrets the app says how to connect, and it becomes an Orun baseline that takes a new billing portal from nothing to live on stage and prod in one landing."
-  state: started
+  state: completed
   milestones:
     - name: "LS0 — the spec"
       exitCriteria:
